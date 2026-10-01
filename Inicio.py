@@ -1,5 +1,6 @@
 import os
 import streamlit as st
+import streamlit.components.v1 as components
 import base64
 from openai import OpenAI
 import openai
@@ -30,133 +31,30 @@ def encode_image_to_base64(image_path):
 
 
 # -----------------------------------------------------------------------------
-# CONFIGURACIÓN VISUAL Y ESTILOS NOIR
+# CONFIGURACIÓN Y MOTOR VISUAL NOIR
 # -----------------------------------------------------------------------------
 st.set_page_config(page_title='Tablero Inteligente', layout='wide')
 
-st.markdown(
+# 1. Inyección de Javascript en el documento padre (Estela del mouse + Foco ambiental)
+components.html(
     """
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
-
-    /* Fondo principal y tipografía sobria */
-    html, body, [data-testid="stAppViewContainer"] {
-        background-color: #09090b !important;
-        color: #f4f4f5 !important;
-        font-family: 'Inter', -apple-system, sans-serif !important;
-    }
-
-    #MainMenu, footer, header { visibility: hidden; }
-
-    /* Encabezados */
-    h1 {
-        text-align: center;
-        font-size: 1.6rem !important;
-        font-weight: 500 !important;
-        letter-spacing: 0.12em !important;
-        text-transform: uppercase !important;
-        color: #fafafa !important;
-        margin-top: 0.5rem !important;
-        margin-bottom: 0.5rem !important;
-    }
-
-    h3 {
-        font-size: 0.95rem !important;
-        font-weight: 400 !important;
-        color: #a1a1aa !important;
-        letter-spacing: 0.02em !important;
-    }
-
-    .canvas-instruction {
-        text-align: center;
-        font-size: 0.85rem;
-        color: #71717a;
-        margin-bottom: 1.5rem;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-    }
-
-    /* Contenedor del lienzo centrado al 80% */
-    div[data-testid="stCanvas"] {
-        display: flex !important;
-        justify-content: center !important;
-    }
-
-    div[data-testid="stCanvas"] > canvas {
-        border: 1px solid rgba(255, 255, 255, 0.12) !important;
-        border-radius: 4px !important;
-        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8) !important;
-        transition: border-color 0.3s ease, box-shadow 0.3s ease !important;
-    }
-
-    div[data-testid="stCanvas"] > canvas:hover {
-        border-color: rgba(255, 255, 255, 0.35) !important;
-        box-shadow: 0 0 25px rgba(255, 255, 255, 0.03) !important;
-    }
-
-    /* Inputs de texto estilo estudio */
-    div[data-testid="stTextInput"] input {
-        background-color: #111114 !important;
-        color: #f4f4f5 !important;
-        border: 1px solid rgba(255, 255, 255, 0.12) !important;
-        border-radius: 4px !important;
-        font-family: 'JetBrains Mono', monospace !important;
-        font-size: 0.85rem !important;
-        padding: 0.6rem 0.8rem !important;
-        transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
-    }
-
-    div[data-testid="stTextInput"] input:focus {
-        border-color: rgba(255, 255, 255, 0.4) !important;
-        box-shadow: 0 0 10px rgba(255, 255, 255, 0.05) !important;
-    }
-
-    /* Botones sobrios */
-    div.stButton > button {
-        border-radius: 4px !important;
-        font-family: 'JetBrains Mono', monospace !important;
-        font-size: 0.8rem !important;
-        letter-spacing: 0.06em !important;
-        text-transform: uppercase !important;
-        padding: 0.65rem 1.4rem !important;
-        border: 1px solid rgba(255, 255, 255, 0.15) !important;
-        background-color: #fafafa !important;
-        color: #09090b !important;
-        font-weight: 500 !important;
-        transition: all 0.2s ease !important;
-    }
-
-    div.stButton > button:hover {
-        background-color: #ffffff !important;
-        transform: translateY(-1px);
-        box-shadow: 0 4px 15px rgba(255, 255, 255, 0.15) !important;
-    }
-
-    /* Sidebar minimalista */
-    section[data-testid="stSidebar"] {
-        background-color: #070709 !important;
-        border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
-    }
-
-    /* Línea divisoria */
-    hr {
-        border-color: rgba(255, 255, 255, 0.08) !important;
-        margin: 2rem 0 !important;
-    }
-    </style>
-
-    <!-- Estela reactiva del cursor -->
-    <canvas id="trailCanvas" style="position:fixed; top:0; left:0; width:100vw; height:100vh; pointer-events:none; z-index:99999;"></canvas>
     <script>
-    (function() {
-        const doc = window.parent.document;
-        let canvas = doc.getElementById('trailCanvas');
-        if (!canvas) {
-            canvas = document.createElement('canvas');
-            canvas.id = 'trailCanvas';
-            canvas.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:99999;';
-            doc.body.appendChild(canvas);
-        }
+    const parentDoc = window.parent.document;
+    
+    // Evitar inyecciones duplicadas al refrescar
+    if (!parentDoc.getElementById('noir-fx-canvas')) {
+        // Lienzo para partículas del mouse
+        const canvas = parentDoc.createElement('canvas');
+        canvas.id = 'noir-fx-canvas';
+        canvas.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:999999;';
+        parentDoc.body.appendChild(canvas);
+
+        // Foco de luz sutil que sigue al cursor
+        const torch = parentDoc.createElement('div');
+        torch.id = 'noir-torch';
+        torch.style.cssText = 'position:fixed;top:0;left:0;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0) 70%);pointer-events:none;transform:translate(-50%, -50%);z-index:1;transition:opacity 0.3s;';
+        parentDoc.body.appendChild(torch);
+
         const ctx = canvas.getContext('2d');
         let width = canvas.width = window.parent.innerWidth;
         let height = canvas.height = window.parent.innerHeight;
@@ -168,33 +66,177 @@ st.markdown(
 
         const points = [];
         window.parent.addEventListener('mousemove', (e) => {
-            points.push({ x: e.clientX, y: e.clientY, alpha: 1.0 });
+            torch.style.left = e.clientX + 'px';
+            torch.style.top = e.clientY + 'px';
+            
+            // Generar partículas en la estela
+            points.push({
+                x: e.clientX,
+                y: e.clientY,
+                alpha: 1.0,
+                radius: Math.random() * 2 + 1.2,
+                vx: (Math.random() - 0.5) * 0.5,
+                vy: (Math.random() - 0.5) * 0.5
+            });
         });
 
         function render() {
             ctx.clearRect(0, 0, width, height);
             for (let i = 0; i < points.length; i++) {
-                const pt = points[i];
-                pt.alpha *= 0.93;
+                const p = points[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.alpha *= 0.94;
                 ctx.beginPath();
-                ctx.arc(pt.x, pt.y, (1 - (i / points.length)) * 2.2, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(255, 255, 255, ${pt.alpha * 0.12})`;
+                ctx.arc(p.x, p.y, p.radius * p.alpha, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${p.alpha * 0.25})`;
                 ctx.fill();
             }
-            while (points.length > 0 && points[0].alpha < 0.05) {
+            while (points.length > 0 && points[0].alpha < 0.03) {
                 points.shift();
             }
             requestAnimationFrame(render);
         }
         render();
-    })();
+    }
     </script>
+    """,
+    height=0,
+    width=0,
+)
+
+# 2. Hoja de Estilos Noir (Dark Obsidian, Marcos 80% y microinteracciones)
+st.markdown(
+    """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+    /* Fondo principal y limpieza de interfaz nativa */
+    html, body, [data-testid="stAppViewContainer"] {
+        background-color: #050507 !important;
+        color: #e4e4e7 !important;
+        font-family: 'Inter', -apple-system, sans-serif !important;
+    }
+
+    #MainMenu, footer, header { visibility: hidden; }
+
+    /* Tipografía sobria */
+    h1 {
+        text-align: center;
+        font-size: 1.75rem !important;
+        font-weight: 500 !important;
+        letter-spacing: 0.16em !important;
+        text-transform: uppercase !important;
+        color: #fafafa !important;
+        margin-top: 1rem !important;
+        margin-bottom: 0.4rem !important;
+    }
+
+    h3 {
+        font-size: 0.9rem !important;
+        font-weight: 400 !important;
+        color: #71717a !important;
+        letter-spacing: 0.05em !important;
+    }
+
+    .canvas-instruction {
+        text-align: center;
+        font-size: 0.82rem;
+        color: #71717a;
+        margin-bottom: 1.8rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Marco del Lienzo: Centrado al 80% con aura reactiva */
+    .studio-frame {
+        position: relative;
+        background: #000000;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 6px;
+        padding: 6px;
+        display: flex;
+        justify-content: center;
+        box-shadow: 0 25px 60px rgba(0, 0, 0, 0.95);
+        transition: border-color 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s ease;
+    }
+
+    .studio-frame:hover {
+        border-color: rgba(255, 255, 255, 0.4);
+        box-shadow: 0 0 35px rgba(255, 255, 255, 0.06);
+    }
+
+    div[data-testid="stCustomComponentV1"] iframe {
+        border-radius: 4px !important;
+        margin: 0 auto !important;
+        display: block !important;
+    }
+
+    /* Campos de entrada tipo consola */
+    div[data-testid="stTextInput"] input {
+        background-color: #0c0c0e !important;
+        color: #f4f4f5 !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        border-radius: 4px !important;
+        font-family: 'JetBrains Mono', monospace !important;
+        font-size: 0.85rem !important;
+        padding: 0.7rem 0.9rem !important;
+        transition: all 0.25s ease !important;
+    }
+
+    div[data-testid="stTextInput"] input:focus {
+        border-color: rgba(255, 255, 255, 0.35) !important;
+        box-shadow: 0 0 15px rgba(255, 255, 255, 0.05) !important;
+    }
+
+    /* Botones Monocromáticos de Alto Impacto */
+    div.stButton > button {
+        border-radius: 4px !important;
+        font-family: 'JetBrains Mono', monospace !important;
+        font-size: 0.8rem !important;
+        letter-spacing: 0.1em !important;
+        text-transform: uppercase !important;
+        padding: 0.8rem 1.6rem !important;
+        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    }
+
+    div.stButton > button[kind="secondary"] {
+        background-color: #f4f4f5 !important;
+        color: #09090b !important;
+        font-weight: 600 !important;
+    }
+
+    div.stButton > button[kind="secondary"]:hover {
+        background-color: #ffffff !important;
+        transform: translateY(-2px) scale(1.005);
+        box-shadow: 0 8px 25px rgba(255, 255, 255, 0.18) !important;
+    }
+
+    /* Caja de respuesta / Consola de salida */
+    div[data-testid="stMarkdownContainer"] p {
+        line-height: 1.65;
+        font-size: 0.98rem;
+    }
+
+    /* Barra lateral */
+    section[data-testid="stSidebar"] {
+        background-color: #050507 !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.07) !important;
+    }
+
+    hr {
+        border-color: rgba(255, 255, 255, 0.08) !important;
+        margin: 2.5rem 0 !important;
+    }
+    </style>
     """,
     unsafe_allow_html=True,
 )
 
 # -----------------------------------------------------------------------------
-# INTERFAZ Y FLUJO DE DATOS
+# INTERFAZ Y FLUJO DE DATOS (LÓGICA INTACTA)
 # -----------------------------------------------------------------------------
 st.title('Tablero Inteligente')
 
@@ -203,7 +245,7 @@ with st.sidebar:
     st.subheader("En esta aplicación veremos la capacidad que ahora tiene una máquina de interpretar un boceto")
     stroke_width = st.slider('Selecciona el ancho de línea', 1, 30, 5)
 
-# Distribución en columnas: 10% margen | 80% centro | 10% margen
+# Distribución: 10% margen | 80% centro | 10% margen
 col_l, col_center, col_r = st.columns([1, 8, 1])
 
 with col_center:
@@ -213,6 +255,8 @@ with col_center:
     stroke_color = "#000000"
     bg_color = '#FFFFFF'
 
+    # Contenedor estilizado para el canvas
+    st.markdown('<div class="studio-frame">', unsafe_allow_html=True)
     canvas_result = st_canvas(
         fill_color="rgba(255, 165, 0, 0.3)",
         stroke_width=stroke_width,
@@ -223,6 +267,7 @@ with col_center:
         drawing_mode=drawing_mode,
         key="canvas",
     )
+    st.markdown('</div>', unsafe_allow_html=True)
 
     st.write("")
     ke = st.text_input('Ingresa tu Clave', type="password")
@@ -257,27 +302,27 @@ with col_center:
                 full_response = ""
                 message_placeholder = st.empty()
                 response = openai.chat.completions.create(
-                  model="gpt-4o-mini",
-                  messages=[
-                    {
-                       "role": "user",
-                       "content": [
-                         {"type": "text", "text": prompt_text},
-                         {
-                           "type": "image_url",
-                           "image_url": {
-                             "url": f"data:image/png;base64,{base64_image}",
-                           },
-                         },
-                       ],
-                      }
+                    model="gpt-4o-mini",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt_text},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/png;base64,{base64_image}",
+                                    },
+                                },
+                            ],
+                        }
                     ],
-                  max_tokens=500,
-                  )
+                    max_tokens=500,
+                )
                 
                 if response.choices[0].message.content is not None:
-                        full_response += response.choices[0].message.content
-                        message_placeholder.markdown(full_response + "▌")
+                    full_response += response.choices[0].message.content
+                    message_placeholder.markdown(full_response + "▌")
                 
                 # Final update to placeholder after the stream ends
                 message_placeholder.markdown(full_response)
@@ -287,7 +332,7 @@ with col_center:
                 st.session_state.analysis_done = True
                 
                 if Expert == profile_imgenh:
-                   st.session_state.mi_respuesta = response.choices[0].message.content
+                    st.session_state.mi_respuesta = response.choices[0].message.content
         
             except Exception as e:
                 st.error(f"An error occurred: {e}")
