@@ -1,360 +1,229 @@
 import os
 import streamlit as st
-import streamlit.components.v1 as components
 import base64
 from openai import OpenAI
-import openai
-from PIL import Image, ImageOps
+from PIL import Image
 import numpy as np
-import pandas as pd
 from streamlit_drawable_canvas import st_canvas
 
-Expert = " "
-profile_imgenh = " "
-
-# Inicializar session_state
-if 'analysis_done' not in st.session_state:
-    st.session_state.analysis_done = False
-if 'full_response' not in st.session_state:
-    st.session_state.full_response = ""
-if 'base64_image' not in st.session_state:
-    st.session_state.base64_image = ""
-
-
-def encode_image_to_base64(image_path):
-    try:
-        with open(image_path, "rb") as image_file:
-            encoded_image = base64.b64encode(image_file.read()).decode("utf-8")
-            return encoded_image
-    except FileNotFoundError:
-        return "Error: La imagen no se encontró en la ruta especificada."
-
-
 # -----------------------------------------------------------------------------
-# CONFIGURACIÓN Y MOTOR VISUAL NOIR
+# CONFIGURACIÓN GENERAL
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title='Tablero Inteligente', layout='wide')
-
-# 1. Inyección de Javascript en el documento padre (Estela del mouse + Foco ambiental)
-components.html(
-    """
-    <script>
-    const parentDoc = window.parent.document;
-    
-    // Evitar inyecciones duplicadas al refrescar
-    if (!parentDoc.getElementById('noir-fx-canvas')) {
-        // Lienzo para partículas del mouse
-        const canvas = parentDoc.createElement('canvas');
-        canvas.id = 'noir-fx-canvas';
-        canvas.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:999999;';
-        parentDoc.body.appendChild(canvas);
-
-        // Foco de luz sutil que sigue al cursor
-        const torch = parentDoc.createElement('div');
-        torch.id = 'noir-torch';
-        torch.style.cssText = 'position:fixed;top:0;left:0;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0) 70%);pointer-events:none;transform:translate(-50%, -50%);z-index:1;transition:opacity 0.3s;';
-        parentDoc.body.appendChild(torch);
-
-        const ctx = canvas.getContext('2d');
-        let width = canvas.width = window.parent.innerWidth;
-        let height = canvas.height = window.parent.innerHeight;
-
-        window.parent.addEventListener('resize', () => {
-            width = canvas.width = window.parent.innerWidth;
-            height = canvas.height = window.parent.innerHeight;
-        });
-
-        const points = [];
-        window.parent.addEventListener('mousemove', (e) => {
-            torch.style.left = e.clientX + 'px';
-            torch.style.top = e.clientY + 'px';
-            
-            // Generar partículas en la estela
-            points.push({
-                x: e.clientX,
-                y: e.clientY,
-                alpha: 1.0,
-                radius: Math.random() * 2 + 1.2,
-                vx: (Math.random() - 0.5) * 0.5,
-                vy: (Math.random() - 0.5) * 0.5
-            });
-        });
-
-        function render() {
-            ctx.clearRect(0, 0, width, height);
-            for (let i = 0; i < points.length; i++) {
-                const p = points[i];
-                p.x += p.vx;
-                p.y += p.vy;
-                p.alpha *= 0.94;
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.radius * p.alpha, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(255, 255, 255, ${p.alpha * 0.25})`;
-                ctx.fill();
-            }
-            while (points.length > 0 && points[0].alpha < 0.03) {
-                points.shift();
-            }
-            requestAnimationFrame(render);
-        }
-        render();
-    }
-    </script>
-    """,
-    height=0,
-    width=0,
-)
-
-# 2. Hoja de Estilos Noir (Dark Obsidian, Marcos 80% y microinteracciones)
-st.markdown(
-    """
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
-
-    /* Fondo principal y limpieza de interfaz nativa */
-    html, body, [data-testid="stAppViewContainer"] {
-        background-color: #050507 !important;
-        color: #e4e4e7 !important;
-        font-family: 'Inter', -apple-system, sans-serif !important;
-    }
-
-    #MainMenu, footer, header { visibility: hidden; }
-
-    /* Tipografía sobria */
-    h1 {
-        text-align: center;
-        font-size: 1.75rem !important;
-        font-weight: 500 !important;
-        letter-spacing: 0.16em !important;
-        text-transform: uppercase !important;
-        color: #fafafa !important;
-        margin-top: 1rem !important;
-        margin-bottom: 0.4rem !important;
-    }
-
-    h3 {
-        font-size: 0.9rem !important;
-        font-weight: 400 !important;
-        color: #71717a !important;
-        letter-spacing: 0.05em !important;
-    }
-
-    .canvas-instruction {
-        text-align: center;
-        font-size: 0.82rem;
-        color: #71717a;
-        margin-bottom: 1.8rem;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        font-family: 'JetBrains Mono', monospace;
-    }
-
-    /* Marco del Lienzo: Centrado al 80% con aura reactiva */
-    .studio-frame {
-        position: relative;
-        background: #000000;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        border-radius: 6px;
-        padding: 6px;
-        display: flex;
-        justify-content: center;
-        box-shadow: 0 25px 60px rgba(0, 0, 0, 0.95);
-        transition: border-color 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s ease;
-    }
-
-    .studio-frame:hover {
-        border-color: rgba(255, 255, 255, 0.4);
-        box-shadow: 0 0 35px rgba(255, 255, 255, 0.06);
-    }
-
-    div[data-testid="stCustomComponentV1"] iframe {
-        border-radius: 4px !important;
-        margin: 0 auto !important;
-        display: block !important;
-    }
-
-    /* Campos de entrada tipo consola */
-    div[data-testid="stTextInput"] input {
-        background-color: #0c0c0e !important;
-        color: #f4f4f5 !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
-        border-radius: 4px !important;
-        font-family: 'JetBrains Mono', monospace !important;
-        font-size: 0.85rem !important;
-        padding: 0.7rem 0.9rem !important;
-        transition: all 0.25s ease !important;
-    }
-
-    div[data-testid="stTextInput"] input:focus {
-        border-color: rgba(255, 255, 255, 0.35) !important;
-        box-shadow: 0 0 15px rgba(255, 255, 255, 0.05) !important;
-    }
-
-    /* Botones Monocromáticos de Alto Impacto */
-    div.stButton > button {
-        border-radius: 4px !important;
-        font-family: 'JetBrains Mono', monospace !important;
-        font-size: 0.8rem !important;
-        letter-spacing: 0.1em !important;
-        text-transform: uppercase !important;
-        padding: 0.8rem 1.6rem !important;
-        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
-        border: 1px solid rgba(255, 255, 255, 0.15) !important;
-    }
-
-    div.stButton > button[kind="secondary"] {
-        background-color: #f4f4f5 !important;
-        color: #09090b !important;
-        font-weight: 600 !important;
-    }
-
-    div.stButton > button[kind="secondary"]:hover {
-        background-color: #ffffff !important;
-        transform: translateY(-2px) scale(1.005);
-        box-shadow: 0 8px 25px rgba(255, 255, 255, 0.18) !important;
-    }
-
-    /* Caja de respuesta / Consola de salida */
-    div[data-testid="stMarkdownContainer"] p {
-        line-height: 1.65;
-        font-size: 0.98rem;
-    }
-
-    /* Barra lateral */
-    section[data-testid="stSidebar"] {
-        background-color: #050507 !important;
-        border-right: 1px solid rgba(255, 255, 255, 0.07) !important;
-    }
-
-    hr {
-        border-color: rgba(255, 255, 255, 0.08) !important;
-        margin: 2.5rem 0 !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
+st.set_page_config(
+    page_title="Generador de Cuentos Infantiles // Krov Industries",
+    page_icon="📖",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 # -----------------------------------------------------------------------------
-# INTERFAZ Y FLUJO DE DATOS (LÓGICA INTACTA)
+# LÍNEA BASE VISUAL: NOCHE ESTRELLADA CÓSMICA Y FLUIDOS
 # -----------------------------------------------------------------------------
-st.title('Tablero Inteligente')
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&family=JetBrains+Mono:wght@400;500;700&family=Spectral:ital,wght@0,600;1,400&display=swap');
 
+html, body, [data-testid="stAppViewContainer"], .stApp {
+    background-color: #070714 !important;
+    color: #f1f5f9 !important;
+    font-family: 'Plus Jakarta Sans', sans-serif !important;
+    overflow-x: hidden;
+}
+
+[data-testid="stHeader"] { background: transparent !important; }
+
+/* 1. Malla continua de gradientes */
+.stApp {
+    background: linear-gradient(135deg, #070714 0%, #11142e 30%, #1e1132 60%, #060611 100%) !important;
+    background-size: 300% 300% !important;
+    animation: cosmicShift 18s ease infinite alternate !important;
+}
+
+@keyframes cosmicShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* 2. Fluidos orgánicos */
+.fluid-star-1 {
+    position: fixed;
+    top: 15%;
+    left: -120px;
+    width: 520px;
+    height: 520px;
+    background: radial-gradient(circle, rgba(255, 209, 102, 0.12) 0%, rgba(6, 214, 160, 0.03) 55%, transparent 75%);
+    border-radius: 40% 60% 70% 30% / 50% 60% 40% 50%;
+    filter: blur(85px);
+    animation: starDrift1 20s infinite alternate ease-in-out;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.fluid-star-2 {
+    position: fixed;
+    bottom: 5%;
+    right: -100px;
+    width: 560px;
+    height: 560px;
+    background: radial-gradient(circle, rgba(6, 214, 160, 0.12) 0%, rgba(255, 209, 102, 0.03) 55%, transparent 75%);
+    border-radius: 60% 40% 50% 50% / 40% 50% 60% 50%;
+    filter: blur(90px);
+    animation: starDrift2 24s infinite alternate ease-in-out;
+    pointer-events: none;
+    z-index: 0;
+}
+
+@keyframes starDrift1 {
+    0% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(110px, 60px) scale(1.15); }
+    100% { transform: translate(30px, 130px) scale(0.95); }
+}
+
+@keyframes starDrift2 {
+    0% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(-100px, -70px) scale(1.2); }
+    100% { transform: translate(-20px, -110px) scale(0.9); }
+}
+
+.brand-signature {
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.18em;
+    color: #ffd166;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+}
+
+.main-title {
+    font-size: 2.2rem;
+    font-weight: 700;
+    text-align: center;
+    color: #ffffff;
+    margin-bottom: 0.2rem;
+    text-shadow: 0 0 25px rgba(255, 209, 102, 0.35);
+}
+
+.sub-lead {
+    text-align: center;
+    color: #94a3b8;
+    font-size: 0.95rem;
+    margin-bottom: 1.8rem;
+}
+
+div[data-testid="stCustomComponentV1"] {
+    display: flex !important;
+    justify-content: center !important;
+    width: 100% !important;
+}
+
+iframe[title*="canvas"] {
+    width: 680px !important;
+    height: 380px !important;
+    margin: 0 auto !important;
+    display: block !important;
+    border: 2px solid rgba(255, 209, 102, 0.4) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 14px 45px rgba(0, 0, 0, 0.9), 0 0 25px rgba(255, 209, 102, 0.2) !important;
+}
+
+div.stButton > button {
+    border-radius: 6px !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 0.88rem !important;
+    background: linear-gradient(135deg, #ffd166 0%, #06d6a0 100%) !important;
+    color: #070714 !important;
+    font-weight: 700 !important;
+    border: none !important;
+    padding: 0.8rem 1.6rem !important;
+    box-shadow: 0 0 25px rgba(255, 209, 102, 0.35) !important;
+    transition: all 0.25s ease !important;
+}
+</style>
+
+<div class="fluid-star-1"></div>
+<div class="fluid-star-2"></div>
+""", unsafe_allow_html=True)
+
+# -----------------------------------------------------------------------------
+# BARRA LATERAL
+# -----------------------------------------------------------------------------
 with st.sidebar:
-    st.subheader("Acerca de:")
-    st.subheader("En esta aplicación veremos la capacidad que ahora tiene una máquina de interpretar un boceto")
-    stroke_width = st.slider('Selecciona el ancho de línea', 1, 30, 5)
+    st.markdown("### Configuración")
+    api_key_input = st.text_input("Clave de API de OpenAI", type="password", value=os.environ.get("OPENAI_API_KEY", ""))
+    if api_key_input:
+        os.environ["OPENAI_API_KEY"] = api_key_input
+    stroke_width = st.slider("Grosor de línea", 1, 30, 5)
 
-# Distribución: 10% margen | 80% centro | 10% margen
-col_l, col_center, col_r = st.columns([1, 8, 1])
+st.markdown('<div class="brand-signature">Krov Industries · Creatividad Lúdica</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-title">Generador de Historias Infantiles</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-lead">Dibuja cualquier escena o personaje y la IA construirá un cuento mágico</div>', unsafe_allow_html=True)
 
-with col_center:
-    st.markdown('<div class="canvas-instruction">Dibuja el boceto en el panel y presiona el botón para analizarla</div>', unsafe_allow_html=True)
+_, col_c, _ = st.columns([1, 4.5, 1])
 
-    drawing_mode = "freedraw"
-    stroke_color = "#000000"
-    bg_color = '#FFFFFF'
-
-    # Contenedor estilizado para el canvas
-    st.markdown('<div class="studio-frame">', unsafe_allow_html=True)
+with col_c:
     canvas_result = st_canvas(
-        fill_color="rgba(255, 165, 0, 0.3)",
+        fill_color="rgba(255, 209, 102, 0.2)",
         stroke_width=stroke_width,
-        stroke_color=stroke_color,
-        background_color=bg_color,
+        stroke_color="#000000",
+        background_color="#ffffff",
         height=380,
-        width=880,
-        drawing_mode=drawing_mode,
-        key="canvas",
+        width=680,
+        drawing_mode="freedraw",
+        key="kids_story_canvas",
     )
-    st.markdown('</div>', unsafe_allow_html=True)
 
     st.write("")
-    ke = st.text_input('Ingresa tu Clave', type="password")
-    os.environ['OPENAI_API_KEY'] = ke
+    analyze_btn = st.button("Describir boceto", use_container_width=True)
 
-    # Retrieve the OpenAI API Key
-    api_key = os.environ['OPENAI_API_KEY']
+def encode_img_arr(arr):
+    img = Image.fromarray(arr.astype('uint8')).convert('RGB')
+    import io
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=90)
+    return base64.b64encode(buf.getvalue()).decode('utf-8')
 
-    # Initialize the OpenAI client with the API key
-    client = OpenAI(api_key=api_key)
+if "sketch_desc" not in st.session_state:
+    st.session_state.sketch_desc = ""
 
-    st.write("")
-    analyze_button = st.button("Analiza la imagen", type="secondary", use_container_width=True)
-
-    # Check if an image has been uploaded, if the API key is available, and if the button has been pressed
-    if canvas_result.image_data is not None and api_key and analyze_button:
-
-        with st.spinner("Analizando ..."):
-            # Encode the image
-            input_numpy_array = np.array(canvas_result.image_data)
-            input_image = Image.fromarray(input_numpy_array.astype('uint8')).convert('RGBA')
-            input_image.save('img.png')
-            
-            # Codificar la imagen en base64
-            base64_image = encode_image_to_base64("img.png")
-            st.session_state.base64_image = base64_image
-                
-            prompt_text = (f"Describe in spanish briefly the image")
-        
-            # Make the request to the OpenAI API
-            try:
-                full_response = ""
-                message_placeholder = st.empty()
-                response = openai.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": prompt_text},
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": f"data:image/png;base64,{base64_image}",
-                                    },
-                                },
-                            ],
-                        }
-                    ],
-                    max_tokens=500,
-                )
-                
-                if response.choices[0].message.content is not None:
-                    full_response += response.choices[0].message.content
-                    message_placeholder.markdown(full_response + "▌")
-                
-                # Final update to placeholder after the stream ends
-                message_placeholder.markdown(full_response)
-                
-                # Guardar en session_state
-                st.session_state.full_response = full_response
-                st.session_state.analysis_done = True
-                
-                if Expert == profile_imgenh:
-                    st.session_state.mi_respuesta = response.choices[0].message.content
-        
-            except Exception as e:
-                st.error(f"An error occurred: {e}")
-
-    # Mostrar la funcionalidad de crear historia si ya se hizo el análisis
-    if st.session_state.analysis_done:
-        st.divider()
-        st.subheader("📚 ¿Quieres crear una historia?")
-        
-        if st.button("✨ Crear historia infantil", use_container_width=True):
-            with st.spinner("Creando historia..."):
-                story_prompt = f"Basándote en esta descripción: '{st.session_state.full_response}', crea una historia infantil breve y entretenida. La historia debe ser creativa y apropiada para niños."
-                
-                story_response = openai.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": story_prompt}],
-                    max_tokens=500,
-                )
-                
-                st.markdown("**📖 Tu historia:**")
-                st.write(story_response.choices[0].message.content)
-
-    # Warnings for user action required
+if analyze_btn:
+    api_key = os.environ.get("OPENAI_API_KEY", "")
     if not api_key:
-        st.warning("Por favor ingresa tu API key.")
+        st.warning("Introduce tu API Key en la barra lateral.")
+    elif canvas_result.image_data is None:
+        st.warning("Dibuja una figura antes de solicitar la interpretación.")
+    else:
+        with col_c:
+            with st.spinner("Analizando boceto..."):
+                try:
+                    b64 = encode_img_arr(np.array(canvas_result.image_data)[:, :, :3])
+                    client = OpenAI(api_key=api_key)
+                    resp = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[{"role": "user", "content": [{"type": "text", "text": "Describe brevemente en español lo que se observa en este boceto."}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}]}],
+                        max_tokens=250
+                    )
+                    st.session_state.sketch_desc = resp.choices[0].message.content
+                    st.markdown(f"**Descripción del dibujo:** {st.session_state.sketch_desc}")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
+if st.session_state.sketch_desc:
+    with col_c:
+        st.divider()
+        st.markdown("### ¿Deseas inventar un cuento?")
+        if st.button("Crear historia infantil", use_container_width=True):
+            with st.spinner("Escribiendo el cuento..."):
+                try:
+                    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+                    story_prompt = f"Basándote en esta descripción: '{st.session_state.sketch_desc}', crea un cuento infantil breve, tierno y creativo."
+                    story_resp = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[{"role": "user", "content": story_prompt}],
+                        max_tokens=600
+                    )
+                    st.markdown("#### 📖 Tu Cuento:")
+                    st.write(story_resp.choices[0].message.content)
+                except Exception as e:
+                    st.error(f"Error al generar la historia: {e}")
