@@ -4,6 +4,7 @@ import base64
 import numpy as np
 from PIL import Image
 import streamlit as st
+import streamlit.components.v1 as components
 from streamlit_drawable_canvas import st_canvas
 
 # ============================================================
@@ -26,18 +27,11 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&family=JetBrains+Mono:wght@400;600&family=Spectral:ital,wght@0,500;0,700;1,400&display=swap');
 
-[data-testid="stAppViewContainer"] {
-    background: linear-gradient(135deg, #070714 0%, #15102d 40%, #20112c 70%, #060611 100%) !important;
-    background-size: 300% 300% !important;
-    animation: storyLava 16s ease infinite alternate !important;
+html, body, [data-testid="stAppViewContainer"], .stApp {
+    background-color: #070714 !important;
     color: #f1f5f9 !important;
     font-family: 'Plus Jakarta Sans', sans-serif !important;
-}
-
-@keyframes storyLava {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
+    overflow-x: hidden;
 }
 
 [data-testid="stHeader"] { background: transparent !important; }
@@ -73,15 +67,6 @@ st.markdown("""
     padding-top: 1.8rem !important;
     padding-bottom: 3.5rem !important;
     margin: 0 auto !important;
-}
-
-/* Barra de herramientas infantiles */
-.story-tools {
-    background: rgba(18, 14, 34, 0.9);
-    border: 1px solid rgba(255, 209, 102, 0.35);
-    border-radius: 8px;
-    padding: 10px 16px;
-    margin-bottom: 12px;
 }
 
 div[data-testid="stCustomComponentV1"] {
@@ -150,22 +135,88 @@ div.stButton > button[kind="secondary"]:hover {
 </style>
 """, unsafe_allow_html=True)
 
+# FONDO CÓSMICO DE FANTASÍA EN GPU
+components.html(
+    """
+    <script>
+    (function() {
+        const pWin = window.parent;
+        const pDoc = pWin.document;
+
+        if (pWin.__STORY_BG_ACTIVE__) return;
+        pWin.__STORY_BG_ACTIVE__ = true;
+
+        let canvas = pDoc.getElementById('story-lava-canvas');
+        if (!canvas) {
+            canvas = pDoc.createElement('canvas');
+            canvas.id = 'story-lava-canvas';
+            canvas.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:0;background:#070714;';
+            pDoc.body.prepend(canvas);
+        }
+
+        const ctx = canvas.getContext('2d');
+        let w = canvas.width = pWin.innerWidth;
+        let h = canvas.height = pWin.innerHeight;
+
+        pWin.addEventListener('resize', () => {
+            w = canvas.width = pWin.innerWidth;
+            h = canvas.height = pWin.innerHeight;
+        });
+
+        const blobs = [
+            { x: w * 0.2, y: h * 0.3, r: 260, vx: 0.5, vy: 0.4, color: 'rgba(255, 209, 102, 0.14)' },
+            { x: w * 0.8, y: h * 0.4, r: 290, vx: -0.4, vy: 0.5, color: 'rgba(6, 214, 160, 0.12)' }
+        ];
+
+        function animate() {
+            ctx.clearRect(0, 0, w, h);
+            ctx.fillStyle = '#070714';
+            ctx.fillRect(0, 0, w, h);
+            ctx.globalCompositeOperation = 'screen';
+
+            for (let b of blobs) {
+                b.x += b.vx; b.y += b.vy;
+                if (b.x < -100 || b.x > w + 100) b.vx *= -1;
+                if (b.y < -100 || b.y > h + 100) b.vy *= -1;
+
+                const grad = ctx.createRadialGradient(b.x, b.y, b.r * 0.05, b.x, b.y, b.r);
+                grad.addColorStop(0, b.color);
+                grad.addColorStop(1, 'transparent');
+
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+                ctx.fillStyle = grad;
+                ctx.fill();
+            }
+            ctx.globalCompositeOperation = 'source-over';
+            requestAnimationFrame(animate);
+        }
+        animate();
+    })();
+    </script>
+    """,
+    height=0,
+    width=0
+)
+
 st.markdown('<div class="brand-signature">Krov Industries · Creatividad Lúdica</div>', unsafe_allow_html=True)
 st.markdown('<div class="main-title">Taller de Cuentos Ilustrados</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-lead">Dibuja una escena o personaje infantil y la IA redactará una historia original</div>', unsafe_allow_html=True)
 
 # BARRA DE HERRAMIENTAS INFANTILES
-st.markdown('<div class="story-tools">', unsafe_allow_html=True)
-c1, c2, c3, c4 = st.columns([1.5, 0.9, 0.8, 1.1])
-with c1:
-    trazo = st.selectbox("Pincel:", ["🖍️ Pincel Mágico", "📏 Trazo Recto", "⏹️ Recuadro", "⭕ Burbuja", "🔺 Estrella / Polígono", "🧹 Borrador"])
-with c2:
+c_key, c_tool, c_col, c_fill, c_size = st.columns([1.5, 1.2, 0.8, 0.8, 0.9])
+with c_key:
+    api_key = st.text_input("OpenAI API Key:", type="password", value=os.environ.get("OPENAI_API_KEY", ""), placeholder="sk-...")
+    if api_key:
+        os.environ["OPENAI_API_KEY"] = api_key
+with c_tool:
+    trazo = st.selectbox("Pincel:", ["🖍️ Pincel Mágico", "📏 Trazo Recto", "⏹️ Recuadro", "⭕ Burbuja", "🔺 Polígono", "🧹 Borrador"])
+with c_col:
     color = st.color_picker("Tinta:", "#000000")
-with c3:
+with c_fill:
     relleno = st.checkbox("Relleno", value=False)
-with c4:
+with c_size:
     grosor = st.slider("Calibre:", 2, 30, 6)
-st.markdown('</div>', unsafe_allow_html=True)
 
 if "Pincel" in trazo:
     modo = "freedraw"
@@ -179,7 +230,7 @@ elif "Recuadro" in trazo:
 elif "Burbuja" in trazo:
     modo = "circle"
     tinta = color
-elif "Estrella" in trazo:
+elif "Polígono" in trazo:
     modo = "polygon"
     tinta = color
 else:
@@ -221,11 +272,11 @@ def codificar_imagen(arr_data):
 if btn_crear:
     key_val = os.environ.get("OPENAI_API_KEY", "").strip()
     if not key_val:
-        st.warning("Configura tu clave de API en la variable OPENAI_API_KEY para redactar la historia.")
+        st.warning("Introduce tu API Key arriba para redactar la historia.")
     elif canvas_data.image_data is None or not np.any(canvas_data.image_data[:, :, :3] < 250):
         st.warning("Dibuja una figura antes de solicitar el cuento.")
     else:
-        prog = st.progress(0, text="Identificando personajes en el dibujo...")
+        prog = st.progress(0, text="Identificando elementos en el dibujo...")
         try:
             from openai import OpenAI
             client = OpenAI(api_key=key_val)
@@ -234,7 +285,7 @@ if btn_crear:
 
             prompt = (
                 "Observa atentamente este dibujo infantil. Identifica con precisión qué personajes u objetos aparecen "
-                "y escribe un cuento infantil breve, dulce y original en español en el que esos elementos sean los protagonistas. "
+                "y escribe un cuento infantil breve, dulce y original en español donde esos elementos sean los protagonistas. "
                 "Incluye un título destacado al principio."
             )
             resp = client.chat.completions.create(
